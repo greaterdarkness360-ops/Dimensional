@@ -1,5 +1,6 @@
 package com.dimensional.app.ui
 
+import android.bluetooth.BluetoothDevice
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,8 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Divider
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,25 +30,50 @@ import com.dimensional.app.ui.gesture.trackpadTouchHandler
 @Composable
 fun TrackpadScreen(
     state: TrackpadUiState,
+    diagnosticText: String,
+    pairedDevices: List<BluetoothDevice>,
+    onConnectDevice: (BluetoothDevice) -> Unit,
     onEvent: (TrackpadUiEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showDeviceDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xFF0F0F0F))
             .statusBarsPadding()
-            .navigationBarsPadding() // Safe area navigation bar Android
+            .navigationBarsPadding()
     ) {
         // 1. Header Status Koneksi
-        ConnectionHeader(status = state.connectionStatus)
+        ConnectionHeader(
+            status = state.connectionStatus,
+            onConnectClick = { showDeviceDialog = true }
+        )
 
-        // 2. Kanvas Trackpad Utama (Atas & Tengah)
+        // 2. Banner Diagnostik Internal (Memberikan status jelas)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .background(Color(0xFF1E232A), RoundedCornerShape(8.dp))
+                .border(1.dp, Color(0xFF2C3E50), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+        ) {
+            Text(
+                text = "Diagnostik: $diagnosticText",
+                color = Color(0xFF64B5F6),
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+        }
+
+        // 3. Kanvas Trackpad
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp)
                 .background(Color(0xFF191919), RoundedCornerShape(12.dp))
                 .border(
                     width = 1.dp,
@@ -61,7 +86,6 @@ fun TrackpadScreen(
                     onDragLockEnd = { onEvent(TrackpadUiEvent.DragLockEnded) }
                 )
         ) {
-            // Tombol "RE" di pojok kanan bawah kanvas
             UndoButton(
                 onClick = { onEvent(TrackpadUiEvent.UndoTriggered) },
                 modifier = Modifier
@@ -70,10 +94,10 @@ fun TrackpadScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Divider(color = Color(0xFF262626), thickness = 1.dp)
 
-        // 3. Tombol Fisik Virtual "L" dan "R" (Terbagi 50:50)
+        // 4. Tombol L dan R
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -102,40 +126,88 @@ fun TrackpadScreen(
             )
         }
     }
-}
 
-@Composable
-private fun ConnectionHeader(status: ConnectionStatus) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        val (indicatorColor, statusText) = when (status) {
-            is ConnectionStatus.Connected -> Color(0xFF4CAF50) to "Terhubung: ${status.deviceName}"
-            ConnectionStatus.Connecting -> Color(0xFFFFC107) to "Menghubungkan..."
-            ConnectionStatus.Disconnected -> Color(0xFF757575) to "Bluetooth Siap (Belum Terhubung)"
-        }
-
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(indicatorColor)
+    if (showDeviceDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeviceDialog = false },
+            title = { Text("Pilih Tablet / PC", color = Color.White) },
+            text = {
+                Column {
+                    if (pairedDevices.isEmpty()) {
+                        Text("Belum ada perangkat terpasang.", color = Color.Gray)
+                    } else {
+                        pairedDevices.forEach { device ->
+                            @Suppress("MissingPermission")
+                            val name = device.name ?: device.address
+                            TextButton(
+                                onClick = {
+                                    onConnectDevice(device)
+                                    showDeviceDialog = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(name, color = Color(0xFF4A90E2), fontSize = 16.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDeviceDialog = false }) {
+                    Text("Tutup", color = Color.LightGray)
+                }
+            },
+            containerColor = Color(0xFF222222)
         )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(text = statusText, color = Color.LightGray, fontSize = 12.sp)
     }
 }
 
 @Composable
-private fun UndoButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+private fun ConnectionHeader(
+    status: ConnectionStatus,
+    onConnectClick: () -> Unit
 ) {
-    val haptic = LocalHapticFeedback.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val (indicatorColor, statusText) = when (status) {
+                is ConnectionStatus.Connected -> Color(0xFF4CAF50) to "Terhubung: ${status.deviceName}"
+                ConnectionStatus.Connecting -> Color(0xFFFFC107) to "Menghubungkan..."
+                ConnectionStatus.Disconnected -> Color(0xFF757575) to "Belum Terhubung"
+            }
 
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(indicatorColor)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(text = statusText, color = Color.LightGray, fontSize = 12.sp)
+        }
+
+        if (status !is ConnectionStatus.Connected) {
+            Text(
+                text = "Sambungkan",
+                color = Color(0xFF4A90E2),
+                fontSize = 12.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { onConnectClick() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun UndoButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val haptic = LocalHapticFeedback.current
     Box(
         modifier = modifier
             .size(width = 68.dp, height = 50.dp)
@@ -157,12 +229,7 @@ private fun UndoButton(
 }
 
 @Composable
-private fun MouseButton(
-    label: String,
-    onDown: () -> Unit,
-    onUp: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+private fun MouseButton(label: String, onDown: () -> Unit, onUp: () -> Unit, modifier: Modifier = Modifier) {
     var isPressed by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
 
@@ -183,10 +250,6 @@ private fun MouseButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = label,
-            color = if (isPressed) Color.White else Color(0xFF707070),
-            fontSize = 32.sp
-        )
+        Text(text = label, color = if (isPressed) Color.White else Color(0xFF707070), fontSize = 32.sp)
     }
 }
