@@ -25,7 +25,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var hidManager: HidDeviceManager
     private var currentButtonMask: Byte = HidReportDescriptor.MOUSE_BTN_NONE
 
-    // Akumulator Desimal Sub-Pixel (Mencegah kursor patah-patah saat drag pelan)
     private var remainderX = 0f
     private var remainderY = 0f
     private var scrollRemainder = 0f
@@ -37,7 +36,7 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             hidManager.init()
         } else {
-            Toast.makeText(this, "Izin Bluetooth diperlukan untuk menghubungkan ke tablet", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Izin Bluetooth diperlukan", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -81,7 +80,7 @@ class MainActivity : ComponentActivity() {
                         is TrackpadUiEvent.TwoFingerScrolled -> {
                             val scrollStep = calculateSmoothScrollDelta(event.deltaY, event.dtMillis)
                             if (scrollStep != 0.toByte()) {
-                                // Mengirim paket scroll wheel murni (posisi kursor tetap di tempat)
+                                hidManager.diagnosticText.value = "Scroll 2 Jari Aktif: $scrollStep"
                                 hidManager.sendMouseInput(currentButtonMask, 0, 0, scrollStep)
                             }
                         }
@@ -122,7 +121,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Otomatis meregistrasikan ulang mouse saat aplikasi kembali aktif di layar
         hidManager.reRegister()
     }
 
@@ -151,17 +149,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Algoritma Akselerasi Halus (Sub-Pixel Accumulation)
     private fun calculateSmoothPointerDelta(rawDx: Float, rawDy: Float, dtMillis: Long): Pair<Byte, Byte> {
         if (dtMillis <= 0L) return Pair(0, 0)
         val distance = hypot(rawDx, rawDy)
-        val velocity = distance / dtMillis // Kecepatan piksel per milidetik
+        val velocity = distance / dtMillis
 
-        // Kurva akselerasi dual-stage: 1:1 saat sangat pelan, naik proporsional saat cepat
         val accelFactor = when {
-            velocity < 0.15f -> 0.95f // Mode presisi mikro (menghilangkan patah-patah)
-            velocity < 0.6f -> 1.20f  // Kecepatan jelajah kursor standar
-            else -> (1.20f + (velocity - 0.6f) * 0.75f).coerceAtMost(2.5f) // Batas kecepatan jentikan cepat
+            velocity < 0.15f -> 0.95f
+            velocity < 0.6f -> 1.20f
+            else -> (1.20f + (velocity - 0.6f) * 0.75f).coerceAtMost(2.5f)
         }
 
         val targetDx = rawDx * accelFactor + remainderX
@@ -170,25 +166,25 @@ class MainActivity : ComponentActivity() {
         val stepX = targetDx.toInt().coerceIn(-127, 127)
         val stepY = targetDy.toInt().coerceIn(-127, 127)
 
-        // Sisa pecahan desimal disimpan untuk frame berikutnya agar kursor mengalir mulus
         remainderX = targetDx - stepX
         remainderY = targetDy - stepY
 
         return Pair(stepX.toByte(), stepY.toByte())
     }
 
-    // Algoritma Scroll Roda 2 Jari
+    // Scroll 2 Jari Responsif & Natural
     private fun calculateSmoothScrollDelta(rawDy: Float, dtMillis: Long): Byte {
         if (dtMillis <= 0L) return 0
         
-        // Geser 2 jari ke atas = konten turun (-), Geser 2 jari ke bawah = konten naik (+)
-        val scrollSpeedFactor = 0.45f
+        // Faktor sensitivitas scroll yang ideal untuk dokumen/web di tablet
+        val scrollSpeedFactor = 0.65f
         val targetScroll = (rawDy * scrollSpeedFactor) + scrollRemainder
         
         val stepScroll = targetScroll.toInt().coerceIn(-127, 127)
         scrollRemainder = targetScroll - stepScroll
 
-        return (-stepScroll).coerceIn(-127, 127).toByte()
+        // Geser jari ke atas (rawDy < 0) -> Wheel negatif (menggulir halaman ke bawah)
+        return stepScroll.coerceIn(-127, 127).toByte()
     }
 
     override fun onDestroy() {
