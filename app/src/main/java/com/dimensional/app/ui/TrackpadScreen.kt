@@ -44,15 +44,15 @@ fun TrackpadScreen(
             .fillMaxSize()
             .background(Color(0xFF0F0F0F))
             .statusBarsPadding()
-            .navigationBarsPadding() // Safe area navigation bar Android
+            .navigationBarsPadding()
     ) {
-        // 1. Header Status Koneksi & Tombol Sambungkan
+        // 1. Header Status Koneksi & "By Natanael"
         ConnectionHeader(
             status = state.connectionStatus,
             onConnectClick = { showDeviceDialog = true }
         )
 
-        // 2. Banner Diagnostik dengan Tombol Refresh
+        // 2. Banner Diagnostik
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -86,7 +86,7 @@ fun TrackpadScreen(
             }
         }
 
-        // 3. Kanvas Trackpad Utama (Mendukung 1 Jari & Scroll 2 Jari)
+        // 3. Kanvas Trackpad
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -105,7 +105,6 @@ fun TrackpadScreen(
                     onDragLockEnd = { onEvent(TrackpadUiEvent.DragLockEnded) }
                 )
         ) {
-            // Tombol "RE" di pojok kanan bawah kanvas
             UndoButton(
                 onClick = { onEvent(TrackpadUiEvent.UndoTriggered) },
                 modifier = Modifier
@@ -117,7 +116,7 @@ fun TrackpadScreen(
         Spacer(modifier = Modifier.height(6.dp))
         Divider(color = Color(0xFF262626), thickness = 1.dp)
 
-        // 4. Tombol Fisik Virtual "L" dan "R" (Terbagi 50:50)
+        // 4. Tombol L dan R
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -147,7 +146,6 @@ fun TrackpadScreen(
         }
     }
 
-    // Dialog Pemilih Tablet / PC yang telah dipasangkan
     if (showDeviceDialog) {
         AlertDialog(
             onDismissRequest = { showDeviceDialog = false },
@@ -188,41 +186,54 @@ private fun ConnectionHeader(
     status: ConnectionStatus,
     onConnectClick: () -> Unit
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 16.dp, vertical = 6.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val (indicatorColor, statusText) = when (status) {
-                is ConnectionStatus.Connected -> Color(0xFF4CAF50) to "Terhubung: ${status.deviceName}"
-                ConnectionStatus.Connecting -> Color(0xFFFFC107) to "Menghubungkan..."
-                ConnectionStatus.Disconnected -> Color(0xFF757575) to "Belum Terhubung"
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val (indicatorColor, statusText) = when (status) {
+                    is ConnectionStatus.Connected -> Color(0xFF4CAF50) to "Terhubung: ${status.deviceName}"
+                    ConnectionStatus.Connecting -> Color(0xFFFFC107) to "Menghubungkan..."
+                    ConnectionStatus.Disconnected -> Color(0xFF757575) to "Belum Terhubung"
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(indicatorColor)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = statusText, color = Color.LightGray, fontSize = 12.sp)
             }
 
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(indicatorColor)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = statusText, color = Color.LightGray, fontSize = 12.sp)
+            if (status !is ConnectionStatus.Connected) {
+                Text(
+                    text = "Sambungkan",
+                    color = Color(0xFF4A90E2),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onConnectClick() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
         }
 
-        if (status !is ConnectionStatus.Connected) {
-            Text(
-                text = "Sambungkan",
-                color = Color(0xFF4A90E2),
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable { onConnectClick() }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-        }
+        // Teks "By Natanael" persis di bawah status koneksi
+        Text(
+            text = "By Natanael",
+            color = Color(0xFF888888),
+            fontSize = 10.sp,
+            letterSpacing = 0.5.sp,
+            modifier = Modifier.padding(start = 16.dp, top = 2.dp)
+        )
     }
 }
 
