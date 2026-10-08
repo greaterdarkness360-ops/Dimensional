@@ -3,7 +3,7 @@ package com.dimensional.app.bluetooth
 object HidReportDescriptor {
     val COMPOSITE_DESCRIPTOR = byteArrayOf(
         // ==========================================
-        // MOUSE (REPORT ID 1)
+        // MOUSE DENGAN SCROLL WHEEL (REPORT ID 1) - 4 BYTES
         // ==========================================
         0x05.toByte(), 0x01.toByte(), // USAGE_PAGE (Generic Desktop)
         0x09.toByte(), 0x02.toByte(), // USAGE (Mouse)
@@ -36,6 +36,15 @@ object HidReportDescriptor {
         0x75.toByte(), 0x08.toByte(), //     REPORT_SIZE (8)
         0x95.toByte(), 0x02.toByte(), //     REPORT_COUNT (2)
         0x81.toByte(), 0x06.toByte(), //     INPUT (Data, Var, Rel)
+
+        // Roda Scroll Vertikal (-127 s/d 127)
+        0x09.toByte(), 0x38.toByte(), //     USAGE (Wheel)
+        0x15.toByte(), 0x81.toByte(), //     LOGICAL_MINIMUM (-127)
+        0x25.toByte(), 0x7F.toByte(), //     LOGICAL_MAXIMUM (127)
+        0x75.toByte(), 0x08.toByte(), //     REPORT_SIZE (8)
+        0x95.toByte(), 0x01.toByte(), //     REPORT_COUNT (1)
+        0x81.toByte(), 0x06.toByte(), //     INPUT (Data, Var, Rel)
+
         0xC0.toByte(),                //   END_COLLECTION (Physical)
         0xC0.toByte(),                // END_COLLECTION (Application)
 
@@ -47,7 +56,6 @@ object HidReportDescriptor {
         0xA1.toByte(), 0x01.toByte(), // COLLECTION (Application)
         0x85.toByte(), 0x02.toByte(), //   REPORT_ID (2)
         
-        // Modifiers (Left Ctrl, Shift, Alt, GUI, dll)
         0x05.toByte(), 0x07.toByte(), //   USAGE_PAGE (Keyboard/Keypad)
         0x19.toByte(), 0xE0.toByte(), //   USAGE_MINIMUM (Keyboard LeftControl)
         0x29.toByte(), 0xE7.toByte(), //   USAGE_MAXIMUM (Keyboard Right GUI)
@@ -57,12 +65,10 @@ object HidReportDescriptor {
         0x95.toByte(), 0x08.toByte(), //   REPORT_COUNT (8)
         0x81.toByte(), 0x02.toByte(), //   INPUT (Data, Var, Abs)
         
-        // 1 Reserved Byte
         0x95.toByte(), 0x01.toByte(), //   REPORT_COUNT (1)
         0x75.toByte(), 0x08.toByte(), //   REPORT_SIZE (8)
         0x81.toByte(), 0x01.toByte(), //   INPUT (Cnst, Ary, Abs)
         
-        // Key Array (Maksimum 6 tombol)
         0x95.toByte(), 0x06.toByte(), //   REPORT_COUNT (6)
         0x75.toByte(), 0x08.toByte(), //   REPORT_SIZE (8)
         0x15.toByte(), 0x00.toByte(), //   LOGICAL_MINIMUM (0)
