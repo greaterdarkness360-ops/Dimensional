@@ -80,7 +80,7 @@ class MainActivity : ComponentActivity() {
                         is TrackpadUiEvent.TwoFingerScrolled -> {
                             val scrollStep = calculateSmoothScrollDelta(event.deltaY, event.dtMillis)
                             if (scrollStep != 0.toByte()) {
-                                hidManager.diagnosticText.value = "Scroll 2 Jari Aktif: $scrollStep"
+                                hidManager.diagnosticText.value = "Scroll 2 Jari: $scrollStep"
                                 hidManager.sendMouseInput(currentButtonMask, 0, 0, scrollStep)
                             }
                         }
@@ -172,19 +172,19 @@ class MainActivity : ComponentActivity() {
         return Pair(stepX.toByte(), stepY.toByte())
     }
 
-    // Scroll 2 Jari Responsif & Natural
+    // Scroll 2 Jari Halus, Jinak, dan Presisi
     private fun calculateSmoothScrollDelta(rawDy: Float, dtMillis: Long): Byte {
         if (dtMillis <= 0L) return 0
         
-        // Faktor sensitivitas scroll yang ideal untuk dokumen/web di tablet
-        val scrollSpeedFactor = 0.65f
+        // Damping factor dikalibrasi menjadi 0.06f agar tidak melompat liar
+        val scrollSpeedFactor = 0.06f
         val targetScroll = (rawDy * scrollSpeedFactor) + scrollRemainder
         
-        val stepScroll = targetScroll.toInt().coerceIn(-127, 127)
+        // Dibatasi maksimal 3 tick per frame agar scroll stabil
+        val stepScroll = targetScroll.toInt().coerceIn(-3, 3)
         scrollRemainder = targetScroll - stepScroll
 
-        // Geser jari ke atas (rawDy < 0) -> Wheel negatif (menggulir halaman ke bawah)
-        return stepScroll.coerceIn(-127, 127).toByte()
+        return stepScroll.toByte()
     }
 
     override fun onDestroy() {
