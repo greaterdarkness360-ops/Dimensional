@@ -60,6 +60,9 @@ class MainActivity : ComponentActivity() {
                 state = uiState,
                 diagnosticText = diagnosticText,
                 pairedDevices = pairedDevices,
+                onReRegister = {
+                    hidManager.reRegister()
+                },
                 onConnectDevice = { targetDevice ->
                     hidManager.connectToDevice(targetDevice)
                 },
@@ -102,6 +105,12 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Pastikan pendaftaran mouse tetap aktif saat aplikasi kembali ke layar
+        hidManager.reRegister()
     }
 
     @SuppressLint("MissingPermission")
