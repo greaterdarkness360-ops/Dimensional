@@ -1,6 +1,8 @@
 package com.dimensional.app
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -14,7 +16,6 @@ import androidx.core.content.ContextCompat
 import com.dimensional.app.bluetooth.HidDeviceManager
 import com.dimensional.app.bluetooth.HidReportDescriptor
 import com.dimensional.app.ui.TrackpadScreen
-import com.dimensional.app.ui.contract.ConnectionStatus
 import com.dimensional.app.ui.contract.TrackpadUiEvent
 import com.dimensional.app.ui.contract.TrackpadUiState
 import kotlin.math.hypot
@@ -32,7 +33,7 @@ class MainActivity : ComponentActivity() {
         if (isGranted) {
             hidManager.init()
         } else {
-            Toast.makeText(this, "Izin Bluetooth diperlukan untuk menghubungkan ke PC", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Izin Bluetooth diperlukan untuk menghubungkan ke tablet", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -45,7 +46,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val connectionStatus by hidManager.connectionStatus.collectAsState()
+            val diagnosticText by hidManager.diagnosticText.collectAsState()
             var isDragLockActive by remember { mutableStateOf(false) }
+
+            val pairedDevices = remember { getPairedDevicesList() }
 
             val uiState = TrackpadUiState(
                 connectionStatus = connectionStatus,
@@ -54,6 +58,11 @@ class MainActivity : ComponentActivity() {
 
             TrackpadScreen(
                 state = uiState,
+                diagnosticText = diagnosticText,
+                pairedDevices = pairedDevices,
+                onConnectDevice = { targetDevice ->
+                    hidManager.connectToDevice(targetDevice)
+                },
                 onEvent = { event ->
                     when (event) {
                         is TrackpadUiEvent.PointerMoved -> {
@@ -93,6 +102,12 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun getPairedDevicesList(): List<BluetoothDevice> {
+        val adapter = hidManager.bluetoothAdapter ?: return emptyList()
+        return adapter.bondedDevices.toList()
     }
 
     private fun checkAndRequestPermissions() {
