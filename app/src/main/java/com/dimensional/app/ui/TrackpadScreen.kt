@@ -32,6 +32,7 @@ fun TrackpadScreen(
     state: TrackpadUiState,
     diagnosticText: String,
     pairedDevices: List<BluetoothDevice>,
+    onReRegister: () -> Unit,
     onConnectDevice: (BluetoothDevice) -> Unit,
     onEvent: (TrackpadUiEvent) -> Unit,
     modifier: Modifier = Modifier
@@ -45,13 +46,12 @@ fun TrackpadScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        // 1. Header Status Koneksi
         ConnectionHeader(
             status = state.connectionStatus,
             onConnectClick = { showDeviceDialog = true }
         )
 
-        // 2. Banner Diagnostik Internal (Memberikan status jelas)
+        // Banner Diagnostik dengan tombol Refresh/Daftar Ulang
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -60,15 +60,31 @@ fun TrackpadScreen(
                 .border(1.dp, Color(0xFF2C3E50), RoundedCornerShape(8.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = "Diagnostik: $diagnosticText",
-                color = Color(0xFF64B5F6),
-                fontSize = 11.sp,
-                lineHeight = 15.sp
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Diagnostik: $diagnosticText",
+                    color = Color(0xFF64B5F6),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Refresh",
+                    color = Color(0xFFFFB74D),
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onReRegister() }
+                        .padding(4.dp)
+                )
+            }
         }
 
-        // 3. Kanvas Trackpad
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -97,7 +113,6 @@ fun TrackpadScreen(
         Spacer(modifier = Modifier.height(6.dp))
         Divider(color = Color(0xFF262626), thickness = 1.dp)
 
-        // 4. Tombol L dan R
         Row(
             modifier = Modifier
                 .fillMaxWidth()
