@@ -12,7 +12,7 @@ import java.util.concurrent.Executors
 class HidDeviceManager(private val context: Context) {
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
+    val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
     private var hidDevice: BluetoothHidDevice? = null
     private var connectedHost: BluetoothDevice? = null
 
@@ -55,31 +55,48 @@ class HidDeviceManager(private val context: Context) {
         }
 
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
-            if (registered && pluggedDevice != null) {
-                hidDevice?.connect(pluggedDevice)
+            if (registered) {
+                if (pluggedDevice != null) {
+                    hidDevice?.connect(pluggedDevice)
+                }
+            }
+        }
+
+        override fun onGetReport(device: BluetoothDevice?, type: Byte, id: Byte, bufferSize: Int) {
+            if (device != null) {
+                hidDevice?.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS)
+            }
+        }
+
+        override fun onSetReport(device: BluetoothDevice?, type: Byte, id: Byte, data: ByteArray?) {
+            if (device != null) {
+                hidDevice?.reportError(device, BluetoothHidDevice.ERROR_RSP_SUCCESS)
             }
         }
     }
 
     fun init() {
         if (bluetoothAdapter?.isEnabled == true) {
-            bluetoothAdapter.getProfileProxy(context, profileServiceListener, BluetoothProfile.HID_DEVICE)
+            val supported = bluetoothAdapter.getProfileProxy(context, profileServiceListener, BluetoothProfile.HID_DEVICE)
+            if (!supported) {
+                _connectionStatus.value = ConnectionStatus.Disconnected
+            }
         }
     }
 
     private fun registerHidApp() {
         val sdpSettings = BluetoothHidDeviceAppSdpSettings(
-            "Dimensional Trackpad",
-            "Composite Mouse and Keyboard",
+            "Dimensional Mouse",
+            "Bluetooth Virtual Trackpad",
             "Dimensional",
-            BluetoothHidDevice.SUBCLASS1_COMBO,
+            BluetoothHidDevice.SUBCLASS1_MOUSE, // Kunci: Memberitahu tablet bahwa ini adalah mouse
             HidReportDescriptor.COMPOSITE_DESCRIPTOR
         )
-        val qos = BluetoothHidDeviceAppQosSettings(
-            BluetoothHidDeviceAppQosSettings.SERVICE_BEST_EFFORT,
-            800, 9, 0, 11250, BluetoothHidDeviceAppQosSettings.MAX
-        )
-        hidDevice?.registerApp(sdpSettings, qos, null, executor, hidCallback)
+        hidDevice?.registerApp(sdpSettings, null, null, executor, hidCallback)
+    }
+
+    fun connectToDevice(device: BluetoothDevice): Boolean {
+        return hidDevice?.connect(device) ?: false
     }
 
     fun sendMouseInput(buttonMask: Byte, deltaX: Byte, deltaY: Byte) {
@@ -90,8 +107,6 @@ class HidDeviceManager(private val context: Context) {
 
     fun sendUndoMacro() {
         val host = connectedHost ?: return
-        
-        // 1. Kirim kombinasi Ctrl + Z ditekan
         val keyDown = byteArrayOf(
             HidReportDescriptor.KEY_MOD_LCTRL,
             0x00.toByte(),
@@ -99,7 +114,6 @@ class HidDeviceManager(private val context: Context) {
         )
         hidDevice?.sendReport(host, HidReportDescriptor.REPORT_ID_KEYBOARD, keyDown)
 
-        // 2. Kirim sinyal lepas semua tombol
         val keyUp = ByteArray(8) { 0x00 }
         hidDevice?.sendReport(host, HidReportDescriptor.REPORT_ID_KEYBOARD, keyUp)
     }
