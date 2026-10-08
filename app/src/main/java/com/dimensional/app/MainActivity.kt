@@ -19,12 +19,16 @@ import com.dimensional.app.ui.TrackpadScreen
 import com.dimensional.app.ui.contract.TrackpadUiEvent
 import com.dimensional.app.ui.contract.TrackpadUiState
 import kotlin.math.hypot
-import kotlin.math.pow
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var hidManager: HidDeviceManager
     private var currentButtonMask: Byte = HidReportDescriptor.MOUSE_BTN_NONE
+
+    // Akumulator Desimal Sub-Pixel (Mencegah kursor patah-patah saat drag pelan)
+    private var remainderX = 0f
+    private var remainderY = 0f
+    private var scrollRemainder = 0f
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -69,34 +73,43 @@ class MainActivity : ComponentActivity() {
                 onEvent = { event ->
                     when (event) {
                         is TrackpadUiEvent.PointerMoved -> {
-                            val (scaledDx, scaledDy) = calculatePointerDelta(event.deltaX, event.deltaY, event.dtMillis)
-                            hidManager.sendMouseInput(currentButtonMask, scaledDx, scaledDy)
+                            val (scaledDx, scaledDy) = calculateSmoothPointerDelta(event.deltaX, event.deltaY, event.dtMillis)
+                            if (scaledDx != 0.toByte() || scaledDy != 0.toByte()) {
+                                hidManager.sendMouseInput(currentButtonMask, scaledDx, scaledDy, 0)
+                            }
+                        }
+                        is TrackpadUiEvent.TwoFingerScrolled -> {
+                            val scrollStep = calculateSmoothScrollDelta(event.deltaY, event.dtMillis)
+                            if (scrollStep != 0.toByte()) {
+                                // Mengirim paket scroll wheel murni (posisi kursor tetap di tempat)
+                                hidManager.sendMouseInput(currentButtonMask, 0, 0, scrollStep)
+                            }
                         }
                         is TrackpadUiEvent.DragLockStarted -> {
                             isDragLockActive = true
                             currentButtonMask = HidReportDescriptor.MOUSE_BTN_LEFT
-                            hidManager.sendMouseInput(currentButtonMask, 0, 0)
+                            hidManager.sendMouseInput(currentButtonMask, 0, 0, 0)
                         }
                         is TrackpadUiEvent.DragLockEnded -> {
                             isDragLockActive = false
                             currentButtonMask = HidReportDescriptor.MOUSE_BTN_NONE
-                            hidManager.sendMouseInput(currentButtonMask, 0, 0)
+                            hidManager.sendMouseInput(currentButtonMask, 0, 0, 0)
                         }
                         is TrackpadUiEvent.LeftButtonDown -> {
                             currentButtonMask = (currentButtonMask.toInt() or HidReportDescriptor.MOUSE_BTN_LEFT.toInt()).toByte()
-                            hidManager.sendMouseInput(currentButtonMask, 0, 0)
+                            hidManager.sendMouseInput(currentButtonMask, 0, 0, 0)
                         }
                         is TrackpadUiEvent.LeftButtonUp -> {
                             currentButtonMask = (currentButtonMask.toInt() and HidReportDescriptor.MOUSE_BTN_LEFT.toInt().inv()).toByte()
-                            hidManager.sendMouseInput(currentButtonMask, 0, 0)
+                            hidManager.sendMouseInput(currentButtonMask, 0, 0, 0)
                         }
                         is TrackpadUiEvent.RightButtonDown -> {
                             currentButtonMask = (currentButtonMask.toInt() or HidReportDescriptor.MOUSE_BTN_RIGHT.toInt()).toByte()
-                            hidManager.sendMouseInput(currentButtonMask, 0, 0)
+                            hidManager.sendMouseInput(currentButtonMask, 0, 0, 0)
                         }
                         is TrackpadUiEvent.RightButtonUp -> {
                             currentButtonMask = (currentButtonMask.toInt() and HidReportDescriptor.MOUSE_BTN_RIGHT.toInt().inv()).toByte()
-                            hidManager.sendMouseInput(currentButtonMask, 0, 0)
+                            hidManager.sendMouseInput(currentButtonMask, 0, 0, 0)
                         }
                         is TrackpadUiEvent.UndoTriggered -> {
                             hidManager.sendUndoMacro()
@@ -109,7 +122,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Pastikan pendaftaran mouse tetap aktif saat aplikasi kembali ke layar
+        // Otomatis meregistrasikan ulang mouse saat aplikasi kembali aktif di layar
         hidManager.reRegister()
     }
 
@@ -138,15 +151,44 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun calculatePointerDelta(rawDx: Float, rawDy: Float, dtMillis: Long): Pair<Byte, Byte> {
+    // Algoritma Akselerasi Halus (Sub-Pixel Accumulation)
+    private fun calculateSmoothPointerDelta(rawDx: Float, rawDy: Float, dtMillis: Long): Pair<Byte, Byte> {
         if (dtMillis <= 0L) return Pair(0, 0)
         val distance = hypot(rawDx, rawDy)
-        val velocity = distance / dtMillis
-        val accelFactor = 1.25f * (1f + velocity.pow(1.3f))
+        val velocity = distance / dtMillis // Kecepatan piksel per milidetik
+
+        // Kurva akselerasi dual-stage: 1:1 saat sangat pelan, naik proporsional saat cepat
+        val accelFactor = when {
+            velocity < 0.15f -> 0.95f // Mode presisi mikro (menghilangkan patah-patah)
+            velocity < 0.6f -> 1.20f  // Kecepatan jelajah kursor standar
+            else -> (1.20f + (velocity - 0.6f) * 0.75f).coerceAtMost(2.5f) // Batas kecepatan jentikan cepat
+        }
+
+        val targetDx = rawDx * accelFactor + remainderX
+        val targetDy = rawDy * accelFactor + remainderY
+
+        val stepX = targetDx.toInt().coerceIn(-127, 127)
+        val stepY = targetDy.toInt().coerceIn(-127, 127)
+
+        // Sisa pecahan desimal disimpan untuk frame berikutnya agar kursor mengalir mulus
+        remainderX = targetDx - stepX
+        remainderY = targetDy - stepY
+
+        return Pair(stepX.toByte(), stepY.toByte())
+    }
+
+    // Algoritma Scroll Roda 2 Jari
+    private fun calculateSmoothScrollDelta(rawDy: Float, dtMillis: Long): Byte {
+        if (dtMillis <= 0L) return 0
         
-        val dx = (rawDx * accelFactor).coerceIn(-127f, 127f).toInt().toByte()
-        val dy = (rawDy * accelFactor).coerceIn(-127f, 127f).toInt().toByte()
-        return Pair(dx, dy)
+        // Geser 2 jari ke atas = konten turun (-), Geser 2 jari ke bawah = konten naik (+)
+        val scrollSpeedFactor = 0.45f
+        val targetScroll = (rawDy * scrollSpeedFactor) + scrollRemainder
+        
+        val stepScroll = targetScroll.toInt().coerceIn(-127, 127)
+        scrollRemainder = targetScroll - stepScroll
+
+        return (-stepScroll).coerceIn(-127, 127).toByte()
     }
 
     override fun onDestroy() {
