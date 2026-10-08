@@ -8,10 +8,11 @@ import androidx.compose.ui.input.pointer.positionChange
 import kotlin.math.hypot
 
 private const val DOUBLE_TAP_TIMEOUT_MS = 280L
-private const val TOUCH_SLOP = 6f
+private const val TOUCH_SLOP = 5f
 
 fun Modifier.trackpadTouchHandler(
     onPointerMove: (dx: Float, dy: Float, dt: Long) -> Unit,
+    onTwoFingerScroll: (dy: Float, dt: Long) -> Unit,
     onDragLockStart: () -> Unit,
     onDragLockEnd: () -> Unit
 ): Modifier = pointerInput(Unit) {
@@ -26,6 +27,7 @@ fun Modifier.trackpadTouchHandler(
         var isDragLocking = false
         var hasMovedPastSlop = false
         var accumulatedMovement = 0f
+        var isTwoFingerScrolling = false
 
         if (isDoubleTapHold) {
             isDragLocking = true
@@ -33,40 +35,50 @@ fun Modifier.trackpadTouchHandler(
         }
 
         lastEventUptime = downTime
-        val currentPointerId = down.id
 
         while (true) {
             val event = awaitPointerEvent()
-            val change = event.changes.firstOrNull { it.id == currentPointerId } ?: break
+            val activePointers = event.changes.filter { it.pressed }
 
-            if (!change.pressed) {
-                val upTime = change.uptimeMillis
+            if (activePointers.isEmpty()) {
+                val upTime = event.changes.firstOrNull()?.uptimeMillis ?: System.currentTimeMillis()
                 if (isDragLocking) {
                     onDragLockEnd()
                     lastTapUpTime = 0L
-                } else if (!hasMovedPastSlop && (upTime - downTime) < DOUBLE_TAP_TIMEOUT_MS) {
+                } else if (!hasMovedPastSlop && !isTwoFingerScrolling && (upTime - downTime) < DOUBLE_TAP_TIMEOUT_MS) {
                     lastTapUpTime = upTime
                 }
-                change.consume()
+                event.changes.forEach { it.consume() }
                 break
             }
 
-            val delta = change.positionChange()
-            val dt = (change.uptimeMillis - lastEventUptime).coerceAtLeast(1L)
-            lastEventUptime = change.uptimeMillis
+            val now = activePointers.first().uptimeMillis
+            val dt = (now - lastEventUptime).coerceAtLeast(1L)
+            lastEventUptime = now
 
-            if (!hasMovedPastSlop) {
-                accumulatedMovement += hypot(delta.x, delta.y)
-                if (accumulatedMovement > TOUCH_SLOP) {
-                    hasMovedPastSlop = true
+            if (activePointers.size >= 2) {
+                // Mode Scroll 2 Jari
+                isTwoFingerScrolling = true
+                val avgDeltaY = (activePointers[0].positionChange().y + activePointers[1].positionChange().y) / 2f
+                onTwoFingerScroll(avgDeltaY, dt)
+            } else if (!isTwoFingerScrolling) {
+                // Mode 1 Jari (Gerak Kursor)
+                val primaryChange = activePointers.first()
+                val delta = primaryChange.positionChange()
+
+                if (!hasMovedPastSlop) {
+                    accumulatedMovement += hypot(delta.x, delta.y)
+                    if (accumulatedMovement > TOUCH_SLOP) {
+                        hasMovedPastSlop = true
+                    }
+                }
+
+                if (hasMovedPastSlop || isDragLocking) {
+                    onPointerMove(delta.x, delta.y, dt)
                 }
             }
 
-            if (hasMovedPastSlop || isDragLocking) {
-                onPointerMove(delta.x, delta.y, dt)
-            }
-
-            change.consume()
+            event.changes.forEach { it.consume() }
         }
     }
 }
