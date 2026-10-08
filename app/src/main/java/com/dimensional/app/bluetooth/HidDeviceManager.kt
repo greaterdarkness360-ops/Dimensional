@@ -2,7 +2,10 @@ package com.dimensional.app.bluetooth
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import com.dimensional.app.ui.contract.ConnectionStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,20 +18,35 @@ class HidDeviceManager(private val context: Context) {
     val bluetoothAdapter: BluetoothAdapter? = bluetoothManager.adapter
     private var hidDevice: BluetoothHidDevice? = null
     private var connectedHost: BluetoothDevice? = null
+    private var isAppRegistered = false
 
     private val _connectionStatus = MutableStateFlow<ConnectionStatus>(ConnectionStatus.Disconnected)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus
 
-    // State Diagnostik Real-time untuk Layar
-    val diagnosticText = MutableStateFlow("Memeriksa kesiapan Bluetooth...")
+    val diagnosticText = MutableStateFlow("Menyiapkan Bluetooth...")
 
     private val executor = Executors.newSingleThreadExecutor()
+
+    // Otomatis mendaftar ulang jika Bluetooth HP sempat dimatikan lalu dinyalakan
+    private val bluetoothStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
+                val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                if (state == BluetoothAdapter.STATE_ON) {
+                    diagnosticText.value = "Bluetooth aktif kembali. Mendaftarkan ulang..."
+                    init()
+                } else if (state == BluetoothAdapter.STATE_TURNING_OFF || state == BluetoothAdapter.STATE_OFF) {
+                    isAppRegistered = false
+                    diagnosticText.value = "Bluetooth HP nonaktif."
+                }
+            }
+        }
+    }
 
     private val profileServiceListener = object : BluetoothProfile.ServiceListener {
         override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
             if (profile == BluetoothProfile.HID_DEVICE) {
                 hidDevice = proxy as BluetoothHidDevice
-                diagnosticText.value = "Layanan HID terhubung! Mendaftarkan ke sistem..."
                 registerHidApp()
             }
         }
@@ -36,8 +54,9 @@ class HidDeviceManager(private val context: Context) {
         override fun onServiceDisconnected(profile: Int) {
             if (profile == BluetoothProfile.HID_DEVICE) {
                 hidDevice = null
+                isAppRegistered = false
                 _connectionStatus.value = ConnectionStatus.Disconnected
-                diagnosticText.value = "Layanan HID terputus oleh sistem."
+                diagnosticText.value = "Layanan HID terlepas."
             }
         }
     }
@@ -52,7 +71,7 @@ class HidDeviceManager(private val context: Context) {
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
                     _connectionStatus.value = ConnectionStatus.Connecting
-                    diagnosticText.value = "Sedang menyambungkan..."
+                    diagnosticText.value = "Menyambungkan..."
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connectedHost = null
@@ -63,13 +82,14 @@ class HidDeviceManager(private val context: Context) {
         }
 
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
+            isAppRegistered = registered
             if (registered) {
                 diagnosticText.value = "BERHASIL: HP Infinix terdaftar sebagai Mouse HID di sistem!"
                 if (pluggedDevice != null) {
                     hidDevice?.connect(pluggedDevice)
                 }
             } else {
-                diagnosticText.value = "GAGAL: Sistem menolak pendaftaran Mouse HID."
+                diagnosticText.value = "Status: Belum terdaftar (Tekan 'Daftarkan Ulang')."
             }
         }
 
@@ -87,26 +107,23 @@ class HidDeviceManager(private val context: Context) {
     }
 
     fun init() {
-        val adapter = bluetoothAdapter
-        if (adapter == null) {
-            diagnosticText.value = "FATAL: Perangkat tidak memiliki Bluetooth."
-            return
-        }
+        val adapter = bluetoothAdapter ?: return
         if (!adapter.isEnabled) {
-            diagnosticText.value = "Peringatan: Bluetooth di HP sedang nonaktif."
+            diagnosticText.value = "Bluetooth HP belum aktif."
             return
         }
 
-        // Meminta sistem Android mengaktifkan profil HID Device
-        val supported = adapter.getProfileProxy(context.applicationContext, profileServiceListener, BluetoothProfile.HID_DEVICE)
-        if (!supported) {
-            diagnosticText.value = "TIDAK DIDUKUNG: Sistem HP ini menonaktifkan fitur Bluetooth HID Device."
-        } else {
-            diagnosticText.value = "Meminta izin profil HID ke sistem Android..."
-        }
+        try {
+            context.registerReceiver(
+                bluetoothStateReceiver,
+                IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+            )
+        } catch (_: Exception) {}
+
+        adapter.getProfileProxy(context.applicationContext, profileServiceListener, BluetoothProfile.HID_DEVICE)
     }
 
-    private fun registerHidApp() {
+    fun registerHidApp() {
         val sdpSettings = BluetoothHidDeviceAppSdpSettings(
             "Dimensional Mouse",
             "Virtual Bluetooth Trackpad",
@@ -114,9 +131,14 @@ class HidDeviceManager(private val context: Context) {
             BluetoothHidDevice.SUBCLASS1_MOUSE,
             HidReportDescriptor.COMPOSITE_DESCRIPTOR
         )
-        val success = hidDevice?.registerApp(sdpSettings, null, null, executor, hidCallback)
-        if (success != true) {
-            diagnosticText.value = "Panggilan registerApp gagal dikirim ke driver Bluetooth."
+        hidDevice?.registerApp(sdpSettings, null, null, executor, hidCallback)
+    }
+
+    fun reRegister() {
+        if (hidDevice != null) {
+            registerHidApp()
+        } else {
+            init()
         }
     }
 
@@ -145,6 +167,9 @@ class HidDeviceManager(private val context: Context) {
     }
 
     fun release() {
+        try {
+            context.unregisterReceiver(bluetoothStateReceiver)
+        } catch (_: Exception) {}
         bluetoothAdapter?.closeProfileProxy(BluetoothProfile.HID_DEVICE, hidDevice)
     }
 }
