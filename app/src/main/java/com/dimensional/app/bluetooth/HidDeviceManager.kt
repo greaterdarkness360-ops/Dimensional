@@ -27,7 +27,7 @@ class HidDeviceManager(private val context: Context) {
 
     private val executor = Executors.newSingleThreadExecutor()
 
-    // Otomatis mendaftar ulang jika Bluetooth HP sempat dimatikan lalu dinyalakan
+    // Otomatis mendaftar ulang jika Bluetooth HP sempat dimatikan lalu dinyalakan kembali
     private val bluetoothStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
@@ -89,7 +89,7 @@ class HidDeviceManager(private val context: Context) {
                     hidDevice?.connect(pluggedDevice)
                 }
             } else {
-                diagnosticText.value = "Status: Belum terdaftar (Tekan 'Daftarkan Ulang')."
+                diagnosticText.value = "Status: Belum terdaftar (Tekan 'Refresh')."
             }
         }
 
@@ -147,12 +147,14 @@ class HidDeviceManager(private val context: Context) {
         return hidDevice?.connect(device) ?: false
     }
 
-    fun sendMouseInput(buttonMask: Byte, deltaX: Byte, deltaY: Byte) {
+    // Mengirim paket mouse 4-byte (Tombol, Delta X, Delta Y, Scroll Wheel)
+    fun sendMouseInput(buttonMask: Byte, deltaX: Byte, deltaY: Byte, wheel: Byte = 0) {
         val host = connectedHost ?: return
-        val report = byteArrayOf(buttonMask, deltaX, deltaY)
+        val report = byteArrayOf(buttonMask, deltaX, deltaY, wheel)
         hidDevice?.sendReport(host, HidReportDescriptor.REPORT_ID_MOUSE, report)
     }
 
+    // Mengirim makro keyboard Ctrl + Z (Tekan lalu lepas instan)
     fun sendUndoMacro() {
         val host = connectedHost ?: return
         val keyDown = byteArrayOf(
