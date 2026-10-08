@@ -3,7 +3,7 @@ name: Build Dimensional APK
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Memungkinkan tombol 'Run' manual
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,11 +18,19 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: Buat Gradle Wrapper Otomatis
+        run: gradle wrapper --gradle-version 8.7
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Upload APK ke GitHub
         uses: actions/upload-artifact@v4
